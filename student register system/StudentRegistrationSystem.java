@@ -1,7 +1,5 @@
 // package for array lst
 import java.util.ArrayList;
-// package for exception handling
-import java.util.InputMismatchException;
 // package for user input
 import java.util.Scanner;
 
@@ -21,10 +19,10 @@ public class StudentRegistrationSystem {
             System.out.println("Please select an option:");
             System.out.println("1. Register a new student or senior student");
             System.out.println("2. View all registered students");
-            System.out.println("3. Exit");
+            System.out.println("3. Search student by ID");
+            System.out.println("4. Exit");
 
-            int choice = scanner.nextInt();
-            scanner.nextLine(); // Consume the newline character
+            int choice = readInt(scanner, "Enter menu choice (1-4): ");
 
             switch (choice) {
                 case 1:
@@ -34,11 +32,16 @@ public class StudentRegistrationSystem {
                     viewRegisteredStudents();
                     break;
                 case 3:
+                    searchStudentById(scanner);
+                    break;
+                case 4:
                     isRunning = false;
                     break;
                 default:
                     System.out.println("Invalid choice. Please try again.");
             }
+
+            System.out.println();
         }
 
         scanner.close();
@@ -46,20 +49,13 @@ public class StudentRegistrationSystem {
 
     private static void registerStudent(Scanner scanner) {
         try {
-            System.out.println("Enter the student's first name:");
-            String firstName = scanner.nextLine();
-
-            System.out.println("Enter the student's last name:");
-            String lastName = scanner.nextLine();
-
-            System.out.println("Enter the student's mother name:");
-            String motherName = scanner.nextLine();
-
-            System.out.println("Please enter your gender (Male/Female)||(M/F):");
-            String gender = scanner.nextLine();
-
-            System.out.println("your Nationality:");
-            String nationality = scanner.nextLine();
+            String firstName = readValidatedName(scanner, "Enter the student's first name: ");
+            String lastName = readValidatedName(scanner, "Enter the student's last name: ");
+            String motherName = readValidatedName(scanner, "Enter the student's mother name: ");
+            String gender = readGender(scanner);
+            String nationality = readRequiredText(scanner, "Enter your nationality: ");
+            String continent = "";
+            String country = "";
 
 // to check you are either foreigner or not
 
@@ -69,61 +65,56 @@ public class StudentRegistrationSystem {
 
             } else {
                 // Handling for students from other countries
-                System.out.println("Enter Continent:");
-                String continent = scanner.nextLine();
-
-                System.out.println("Enter Country:");
-                String country = scanner.nextLine();
+                continent = readRequiredText(scanner, "Enter continent: ");
+                country = readRequiredText(scanner, "Enter country: ");
 
 
             }
 
-            System.out.println("Enter Region:");
-            String region = scanner.nextLine();
+            String region = readRequiredText(scanner, "Enter region: ");
 
-            System.out.println("Enter the student's phone number:");
-            String phoneNumber = scanner.nextLine();
+            String phoneNumber = readPhoneNumber(scanner);
 
 // when we insert email it must  contain both  @ and .com other ways return invalid email format
-            System.out.print("Enter your Email: ");
-            String email = scanner.nextLine();
-            // Validate email format
-            if (!email.contains("@") || !email.endsWith(".com")) {
-                System.out.println("Invalid email format. Please enter a valid email address.");
-                return;
-            }
+            String email = readEmail(scanner);
 
-            System.out.println("Enter the student's department or stream:");
-            String department = scanner.nextLine();
+            String department = readRequiredText(scanner, "Enter the student's department or stream: ");
 
-            System.out.println("Do you have a student ID? (yes/no)");
-            String userInput = scanner.nextLine();
+            String userInput = readYesNo(scanner, "Do you have a student ID? (yes/no): ");
 //new student may not have student id but for registering senior student may be need
             int studentId = 0;
             if (userInput.equalsIgnoreCase("yes")) {
-                System.out.println("Please enter your ID:");
-                studentId = scanner.nextInt();
-                scanner.nextLine(); // Consume the newline character
+                studentId = readPositiveInt(scanner, "Please enter your ID: ");
+                if (studentIdExists(studentId)) {
+                    System.out.println("This student ID already exists. Registration canceled.");
+                    return;
+                }
                 System.out.println("ID entered: " + studentId);
                 // Further processing with the ID can be done here
-            } else if (userInput.equalsIgnoreCase("no")) {
-                System.out.println("You have no ID.");
-                // Handle the case when the user has no ID
             } else {
-                System.out.println("Invalid input. Please enter either 'yes' or 'no'.");
+                System.out.println("You have no ID.");
             }
 
-            Student student = new Student(firstName, lastName, motherName, gender, nationality, region, phoneNumber, email, studentId, department);
+            Student student = new Student(
+                    firstName,
+                    lastName,
+                    motherName,
+                    gender,
+                    nationality,
+                    continent,
+                    country,
+                    region,
+                    phoneNumber,
+                    email,
+                    studentId,
+                    department
+            );
             students.add(student);
 
             System.out.println("Student registered successfully!");
             System.out.println();
-        }catch (InputMismatchException e){
-            System.out.println("you entered mismatched with expexted input");
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             System.out.println("An error occurred during student registration: " + e.getMessage());
-            e.printStackTrace();
         }
 
     }
@@ -143,19 +134,134 @@ public class StudentRegistrationSystem {
                 " I appreciate your participation .");
     }
 
+    private static void searchStudentById(Scanner scanner) {
+        if (students.isEmpty()) {
+            System.out.println("No students are registered yet.");
+            return;
+        }
+
+        int targetId = readPositiveInt(scanner, "Enter student ID to search: ");
+        for (Student student : students) {
+            if (student.getStudentId() == targetId) {
+                System.out.println("Student found:");
+                System.out.println(student);
+                return;
+            }
+        }
+
+        System.out.println("No student found with ID: " + targetId);
+    }
+
+    private static int readInt(Scanner scanner, String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String input = scanner.nextLine().trim();
+            try {
+                return Integer.parseInt(input);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid number. Please enter digits only.");
+            }
+        }
+    }
+
+    private static int readPositiveInt(Scanner scanner, String prompt) {
+        while (true) {
+            int value = readInt(scanner, prompt);
+            if (value > 0) {
+                return value;
+            }
+            System.out.println("Number must be greater than 0.");
+        }
+    }
+
+    private static String readRequiredText(Scanner scanner, String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String value = scanner.nextLine().trim();
+            if (!value.isEmpty()) {
+                return value;
+            }
+            System.out.println("This field cannot be empty.");
+        }
+    }
+
+    private static String readValidatedName(Scanner scanner, String prompt) {
+        while (true) {
+            String value = readRequiredText(scanner, prompt);
+            if (value.matches("[A-Za-z ]+")) {
+                return value;
+            }
+            System.out.println("Name must contain letters and spaces only.");
+        }
+    }
+
+    private static String readGender(Scanner scanner) {
+        while (true) {
+            String value = readRequiredText(scanner, "Please enter your gender (Male/Female)||(M/F): ");
+            if (value.equalsIgnoreCase("male") || value.equalsIgnoreCase("m")) {
+                return "Male";
+            }
+            if (value.equalsIgnoreCase("female") || value.equalsIgnoreCase("f")) {
+                return "Female";
+            }
+            System.out.println("Invalid gender. Enter Male, Female, M, or F.");
+        }
+    }
+
+    private static String readPhoneNumber(Scanner scanner) {
+        while (true) {
+            String value = readRequiredText(scanner, "Enter the student's phone number: ");
+            if (value.matches("^\\+?[0-9]{10,15}$")) {
+                return value;
+            }
+            System.out.println("Invalid phone number. Use 10-15 digits, optional leading +.");
+        }
+    }
+
+    private static String readEmail(Scanner scanner) {
+        while (true) {
+            String value = readRequiredText(scanner, "Enter your email: ");
+            if (value.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
+                return value;
+            }
+            System.out.println("Invalid email format. Please enter a valid email address.");
+        }
+    }
+
+    private static String readYesNo(Scanner scanner, String prompt) {
+        while (true) {
+            String value = readRequiredText(scanner, prompt);
+            if (value.equalsIgnoreCase("yes") || value.equalsIgnoreCase("no")) {
+                return value;
+            }
+            System.out.println("Invalid input. Please enter either 'yes' or 'no'.");
+        }
+    }
+
+    private static boolean studentIdExists(int studentId) {
+        for (Student student : students) {
+            if (student.getStudentId() == studentId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static class Student {
         private String firstName;
         private String lastName;
         private String motherName;
         private String gender;
         private String nationality;
+        private String continent;
+        private String country;
         private String region;
         private String phoneNumber;
         private String email;
         private int studentId;
         private String department;
 
-        public Student(String firstName, String lastName, String motherName, String gender, String nationality, String region, String phoneNumber, String email, int studentId, String department) {
+        public Student(String firstName, String lastName, String motherName, String gender, String nationality, String continent, String country, String region, String phoneNumber, String email, int studentId, String department) {
             this.firstName = firstName;
 
             this.lastName = lastName;
@@ -165,6 +271,10 @@ public class StudentRegistrationSystem {
             this.gender = gender;
 
             this.nationality = nationality;
+
+            this.continent = continent;
+
+            this.country = country;
 
             this.region = region;
 
@@ -177,17 +287,32 @@ public class StudentRegistrationSystem {
             this.department = department;
         }
 
+        public int getStudentId() {
+            return studentId;
+        }
+
         @Override
         public String toString() {
-            return "Name: " + firstName + " " + lastName + "\n" +
-                    "Mother Name: " + motherName + "\n" +
-                    "Gender: " + gender + "\n" +
-                    "Nationality: " + nationality + "\n" +
-                    "Region: " + region + "\n" +
-                    "Phone Number: " + phoneNumber + "\n" +
-                    "Email: " + email + "\n" +
-                    "Student ID: " + studentId + "\n" +
-                    "Department/Stream: " + department + "\n";
+            StringBuilder details = new StringBuilder();
+            details.append("Name: ").append(firstName).append(" ").append(lastName).append("\n")
+                    .append("Mother Name: ").append(motherName).append("\n")
+                    .append("Gender: ").append(gender).append("\n")
+                    .append("Nationality: ").append(nationality).append("\n");
+
+            if (!continent.isEmpty()) {
+                details.append("Continent: ").append(continent).append("\n");
+            }
+            if (!country.isEmpty()) {
+                details.append("Country: ").append(country).append("\n");
+            }
+
+            details.append("Region: ").append(region).append("\n")
+                    .append("Phone Number: ").append(phoneNumber).append("\n")
+                    .append("Email: ").append(email).append("\n")
+                    .append("Student ID: ").append(studentId == 0 ? "N/A" : studentId).append("\n")
+                    .append("Department/Stream: ").append(department).append("\n");
+
+            return details.toString();
         }
     }
 }
