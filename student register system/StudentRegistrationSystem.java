@@ -1,17 +1,25 @@
 // package for array lst
 import java.util.ArrayList;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 // package for user input
 import java.util.Scanner;
 
 public class StudentRegistrationSystem {
 
     public static ArrayList<Student> students = new ArrayList<>();
+    private static final String DATA_FILE = "students_data.txt";
 
     public static void main(String[] args) {
 
         // creating object
 
         Scanner scanner = new Scanner(System.in);
+        loadStudentsFromFile();
 
         boolean isRunning = true;
         while (isRunning) {
@@ -56,6 +64,7 @@ public class StudentRegistrationSystem {
             System.out.println();
         }
 
+        saveStudentsToFile();
         scanner.close();
     }
 
@@ -130,6 +139,7 @@ public class StudentRegistrationSystem {
                     department
             );
             students.add(student);
+            saveStudentsToFile();
 
             System.out.println("Student registered successfully!");
             System.out.println();
@@ -218,6 +228,7 @@ public class StudentRegistrationSystem {
         }
 
         System.out.println("Student updated successfully.");
+        saveStudentsToFile();
     }
 
     private static void removeStudentById(Scanner scanner) {
@@ -236,6 +247,7 @@ public class StudentRegistrationSystem {
         String confirm = readYesNo(scanner, "Are you sure you want to remove this student? (yes/no): ");
         if (confirm.equalsIgnoreCase("yes")) {
             students.remove(index);
+            saveStudentsToFile();
             System.out.println("Student removed successfully.");
         } else {
             System.out.println("Removal canceled.");
@@ -444,6 +456,172 @@ public class StudentRegistrationSystem {
         return -1;
     }
 
+    private static void loadStudentsFromFile() {
+        File file = new File(DATA_FILE);
+        if (!file.exists()) {
+            return;
+        }
+
+        int loadedCount = 0;
+        int skippedCount = 0;
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
+
+                Student student = deserializeStudent(line);
+                if (student == null) {
+                    skippedCount++;
+                    continue;
+                }
+
+                if (student.getStudentId() > 0 && studentIdExists(student.getStudentId())) {
+                    skippedCount++;
+                    continue;
+                }
+
+                if (studentEmailExists(student.getEmail()) || studentPhoneExists(student.getPhoneNumber())) {
+                    skippedCount++;
+                    continue;
+                }
+
+                students.add(student);
+                loadedCount++;
+            }
+
+            if (loadedCount > 0 || skippedCount > 0) {
+                System.out.println("Loaded " + loadedCount + " student(s) from file.");
+                if (skippedCount > 0) {
+                    System.out.println("Skipped " + skippedCount + " invalid/duplicate record(s).");
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("Could not load data file: " + e.getMessage());
+        }
+    }
+
+    private static void saveStudentsToFile() {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_FILE))) {
+            for (Student student : students) {
+                writer.write(serializeStudent(student));
+                writer.newLine();
+            }
+        } catch (IOException e) {
+            System.out.println("Could not save data file: " + e.getMessage());
+        }
+    }
+
+    private static String serializeStudent(Student student) {
+        return escape(student.getFirstName()) + "|"
+                + escape(student.getLastName()) + "|"
+                + escape(student.getMotherName()) + "|"
+                + escape(student.getGender()) + "|"
+                + escape(student.getNationality()) + "|"
+                + escape(student.getContinent()) + "|"
+                + escape(student.getCountry()) + "|"
+                + escape(student.getRegion()) + "|"
+                + escape(student.getPhoneNumber()) + "|"
+                + escape(student.getEmail()) + "|"
+                + student.getStudentId() + "|"
+                + escape(student.getDepartment());
+    }
+
+    private static Student deserializeStudent(String line) {
+        String[] parts = splitEscaped(line, '|');
+        if (parts.length != 12) {
+            return null;
+        }
+
+        try {
+            int id = Integer.parseInt(parts[10]);
+            if (id < 0) {
+                return null;
+            }
+
+            String email = unescape(parts[9]).toLowerCase();
+            String phone = unescape(parts[8]);
+
+            if (!email.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
+                return null;
+            }
+            if (!phone.matches("^\\+?[0-9]{10,15}$")) {
+                return null;
+            }
+
+            return new Student(
+                    unescape(parts[0]),
+                    unescape(parts[1]),
+                    unescape(parts[2]),
+                    unescape(parts[3]),
+                    unescape(parts[4]),
+                    unescape(parts[5]),
+                    unescape(parts[6]),
+                    unescape(parts[7]),
+                    phone,
+                    email,
+                    id,
+                    unescape(parts[11])
+            );
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static String escape(String value) {
+        return value.replace("\\", "\\\\").replace("|", "\\|");
+    }
+
+    private static String unescape(String value) {
+        StringBuilder sb = new StringBuilder();
+        boolean escaping = false;
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (escaping) {
+                sb.append(ch);
+                escaping = false;
+            } else if (ch == '\\') {
+                escaping = true;
+            } else {
+                sb.append(ch);
+            }
+        }
+        if (escaping) {
+            sb.append('\\');
+        }
+        return sb.toString();
+    }
+
+    private static String[] splitEscaped(String text, char separator) {
+        ArrayList<String> items = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean escaping = false;
+
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (escaping) {
+                current.append(ch);
+                escaping = false;
+            } else if (ch == '\\') {
+                escaping = true;
+            } else if (ch == separator) {
+                items.add(current.toString());
+                current.setLength(0);
+            } else {
+                current.append(ch);
+            }
+        }
+
+        if (escaping) {
+            current.append('\\');
+        }
+        items.add(current.toString());
+
+        return items.toArray(new String[0]);
+    }
+
     private static class Student {
         private String firstName;
         private String lastName;
@@ -488,8 +666,32 @@ public class StudentRegistrationSystem {
             return studentId;
         }
 
+        public String getFirstName() {
+            return firstName;
+        }
+
+        public String getLastName() {
+            return lastName;
+        }
+
+        public String getMotherName() {
+            return motherName;
+        }
+
         public String getGender() {
             return gender;
+        }
+
+        public String getNationality() {
+            return nationality;
+        }
+
+        public String getContinent() {
+            return continent;
+        }
+
+        public String getCountry() {
+            return country;
         }
 
         public String getRegion() {
