@@ -12,7 +12,9 @@ import java.util.Scanner;
 public class StudentRegistrationSystem {
 
     public static ArrayList<Student> students = new ArrayList<>();
-    private static final String DATA_FILE = "students_data.txt";
+    private static final String DATA_FILE = "students_data.csv";
+    private static final String LEGACY_DATA_FILE = "students_data.txt";
+    private static final String CSV_HEADER = "firstName,lastName,motherName,gender,nationality,continent,country,region,phoneNumber,email,studentId,department";
 
     public static void main(String[] args) {
 
@@ -459,6 +461,12 @@ public class StudentRegistrationSystem {
     private static void loadStudentsFromFile() {
         File file = new File(DATA_FILE);
         if (!file.exists()) {
+            File legacyFile = new File(LEGACY_DATA_FILE);
+            if (legacyFile.exists()) {
+                loadStudentsFromLegacyFile(legacyFile);
+                saveStudentsToFile();
+                System.out.println("Migrated legacy data to " + DATA_FILE + ".");
+            }
             return;
         }
 
@@ -467,9 +475,17 @@ public class StudentRegistrationSystem {
 
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
+            boolean isFirstLine = true;
             while ((line = reader.readLine()) != null) {
                 if (line.trim().isEmpty()) {
                     continue;
+                }
+
+                if (isFirstLine) {
+                    isFirstLine = false;
+                    if (line.equalsIgnoreCase(CSV_HEADER)) {
+                        continue;
+                    }
                 }
 
                 Student student = deserializeStudent(line);
@@ -503,8 +519,39 @@ public class StudentRegistrationSystem {
         }
     }
 
+    private static void loadStudentsFromLegacyFile(File legacyFile) {
+        int loadedCount = 0;
+        int skippedCount = 0;
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(legacyFile))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
+
+                Student student = deserializeLegacyStudent(line);
+                if (!canAddStudent(student)) {
+                    skippedCount++;
+                    continue;
+                }
+
+                students.add(student);
+                loadedCount++;
+            }
+            System.out.println("Loaded " + loadedCount + " legacy student(s) from file.");
+            if (skippedCount > 0) {
+                System.out.println("Skipped " + skippedCount + " invalid/duplicate legacy record(s).");
+            }
+        } catch (IOException e) {
+            System.out.println("Could not load legacy data file: " + e.getMessage());
+        }
+    }
+
     private static void saveStudentsToFile() {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(DATA_FILE))) {
+            writer.write(CSV_HEADER);
+            writer.newLine();
             for (Student student : students) {
                 writer.write(serializeStudent(student));
                 writer.newLine();
@@ -515,21 +562,63 @@ public class StudentRegistrationSystem {
     }
 
     private static String serializeStudent(Student student) {
-        return escape(student.getFirstName()) + "|"
-                + escape(student.getLastName()) + "|"
-                + escape(student.getMotherName()) + "|"
-                + escape(student.getGender()) + "|"
-                + escape(student.getNationality()) + "|"
-                + escape(student.getContinent()) + "|"
-                + escape(student.getCountry()) + "|"
-                + escape(student.getRegion()) + "|"
-                + escape(student.getPhoneNumber()) + "|"
-                + escape(student.getEmail()) + "|"
-                + student.getStudentId() + "|"
-                + escape(student.getDepartment());
+        return toCsvField(student.getFirstName()) + ","
+                + toCsvField(student.getLastName()) + ","
+                + toCsvField(student.getMotherName()) + ","
+                + toCsvField(student.getGender()) + ","
+                + toCsvField(student.getNationality()) + ","
+                + toCsvField(student.getContinent()) + ","
+                + toCsvField(student.getCountry()) + ","
+                + toCsvField(student.getRegion()) + ","
+                + toCsvField(student.getPhoneNumber()) + ","
+                + toCsvField(student.getEmail()) + ","
+                + student.getStudentId() + ","
+                + toCsvField(student.getDepartment());
     }
 
     private static Student deserializeStudent(String line) {
+        String[] parts = parseCsvLine(line);
+        if (parts.length != 12) {
+            return null;
+        }
+
+        try {
+            int id = Integer.parseInt(fromCsvField(parts[10]).trim());
+            if (id < 0) {
+                return null;
+            }
+
+            String email = fromCsvField(parts[9]).toLowerCase();
+            String phone = fromCsvField(parts[8]);
+
+            if (!email.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
+                return null;
+            }
+            if (!phone.matches("^\\+?[0-9]{10,15}$")) {
+                return null;
+            }
+
+            Student student = new Student(
+                    fromCsvField(parts[0]),
+                    fromCsvField(parts[1]),
+                    fromCsvField(parts[2]),
+                    fromCsvField(parts[3]),
+                    fromCsvField(parts[4]),
+                    fromCsvField(parts[5]),
+                    fromCsvField(parts[6]),
+                    fromCsvField(parts[7]),
+                    phone,
+                    email,
+                    id,
+                    fromCsvField(parts[11])
+            );
+            return canAddStudent(student) ? student : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static Student deserializeLegacyStudent(String line) {
         String[] parts = splitEscaped(line, '|');
         if (parts.length != 12) {
             return null;
@@ -570,8 +659,58 @@ public class StudentRegistrationSystem {
         }
     }
 
-    private static String escape(String value) {
-        return value.replace("\\", "\\\\").replace("|", "\\|");
+    private static boolean canAddStudent(Student student) {
+        if (student == null) {
+            return false;
+        }
+        if (student.getStudentId() > 0 && studentIdExists(student.getStudentId())) {
+            return false;
+        }
+        if (studentEmailExists(student.getEmail()) || studentPhoneExists(student.getPhoneNumber())) {
+            return false;
+        }
+        return true;
+    }
+
+    private static String toCsvField(String value) {
+        String escaped = value.replace("\"", "\"\"");
+        return "\"" + escaped + "\"";
+    }
+
+    private static String fromCsvField(String value) {
+        String trimmed = value.trim();
+        if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+            String inner = trimmed.substring(1, trimmed.length() - 1);
+            return inner.replace("\"\"", "\"");
+        }
+        return trimmed;
+    }
+
+    private static String[] parseCsvLine(String line) {
+        ArrayList<String> fields = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+
+        for (int i = 0; i < line.length(); i++) {
+            char ch = line.charAt(i);
+
+            if (ch == '"') {
+                if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                    current.append('"');
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (ch == ',' && !inQuotes) {
+                fields.add(current.toString());
+                current.setLength(0);
+            } else {
+                current.append(ch);
+            }
+        }
+
+        fields.add(current.toString());
+        return fields.toArray(new String[0]);
     }
 
     private static String unescape(String value) {
